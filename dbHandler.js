@@ -131,7 +131,9 @@ async function initializeDB(silent = false) {
         await db.close();
     }
     else{
-        console.log("[+] Database already exists at:", DB_PATH);
+        if (!silent) {
+            console.log("[*] Database already exists at:", DB_PATH);
+        }
         return;
     }
 }
