@@ -57,7 +57,7 @@ async function initializeDB(silent = false) {
             CREATE TABLE IF NOT EXISTS jobs(
                 id TEXT PRIMARY KEY,
                 command TEXT NOT NULL,
-                status TEXT NOT NULL CHECK(status IN ('pending', 'running', 'completed', 'failed', 'dead')) default 'pending',
+                state TEXT NOT NULL CHECK(state IN ('pending', 'running', 'completed', 'failed', 'dead')) default 'pending',
                 attempts INTEGER NOT NULL DEFAULT 0,
                 max_attempts INTEGER NOT NULL DEFAULT 3,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
