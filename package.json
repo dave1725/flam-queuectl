@@ -28,6 +28,7 @@
   },
   "homepage": "https://github.com/dave1725/flam-queuectl#readme",
   "dependencies": {
+    "commander": "^14.0.2",
     "express": "^5.1.0",
     "path": "^0.12.7",
     "sqlite": "^5.1.1",
