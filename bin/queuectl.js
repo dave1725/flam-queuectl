@@ -2,6 +2,12 @@
 const { Command } = require('commander');  
 const { initializeDB, getDBConnection } = require('../dbHandler');
 const chalk = require('chalk'); // chalk@4 supports CommonJS
+const fs = require('fs');
+const path = require('path');
+const { spawn, execSync } = require('child_process');
+
+// stop file used to signal workers
+const STOP_FILE = path.resolve(process.cwd(), '.stop_workers');
 
 const program = new Command(); 
 
@@ -151,6 +157,103 @@ program
     });
 
 
+// Worker Commands
+const worker = program.command('worker').description('Manage worker processes');
+
+worker
+    .command('start')
+    .description('Start one or more background worker processes')
+    .option('-c, --count <number>', 'Number of workers to start', '1')
+    .action(async (options) => {
+    // Ensure DB exists before starting workers
+    await ensureDBInitialized();
+        
+        if (fs.existsSync(STOP_FILE)) {
+            try {
+                fs.unlinkSync(STOP_FILE);
+                console.log("Cleared previous stop signal (.stop_workers file deleted).");
+            } catch (e) {
+                console.warn("Warning: Could not delete .stop_workers file:", e.message);
+            }
+        }
+
+        const count = parseInt(options.count, 10);
+        console.log(`Starting ${count} worker(s) in the background...`);
+
+        const workerScript = path.join(__dirname, 'worker.js');
+
+        for (let i = 0; i < count; i++) {
+            const child = spawn(process.argv[0], [workerScript], {
+                detached: true,
+                stdio: 'ignore',
+                cwd: process.cwd()
+            });
+            child.unref();
+        }
+        console.log(`${count} worker(s) started.`);
+    });
+
+worker
+    .command('stop')
+    .description('Signal all workers to stop gracefully')
+    .action(() => {
+        try {
+            fs.writeFileSync(STOP_FILE, 'STOP');
+            console.log("Stop signal sent to all workers (created .stop_workers file).");
+            console.log("Workers will finish their current jobs and exit.");
+        } catch (e) {
+            console.error("Failed to send stop signal:", e.message);
+        }
+    });
+
+worker
+    .command('list')
+    .description('List currently active workers')
+    .action(async () => {
+        let db;
+        try {
+            await ensureDBInitialized();
+            db = await getDBConnection();
+            const workers = await db.all("SELECT * FROM workers WHERE last_heartbeat > datetime('now', '-15 seconds')");
+            if (workers.length === 0) {
+                console.log("No active workers found.");
+            } else {
+                console.table(workers);
+            }
+        } catch (e) {
+            console.error("Error listing workers:", e.message);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+// Status Command
+program
+    .command('status')
+    .description('Show summary of job states')
+    .action(async () => {
+        let db;
+        try {
+            await ensureDBInitialized();
+            db = await getDBConnection();
+            const rows = await db.all("SELECT state, COUNT(*) as count FROM jobs GROUP BY state");
+            const workerStats = await db.get("SELECT COUNT(*) as count FROM workers WHERE last_heartbeat > datetime('now', '-15 seconds')");
+            console.log(`Active Workers: ${workerStats.count}\n`);
+            
+            if (rows.length === 0) {
+                console.log("No jobs in queue.");
+            } else {
+                console.table(rows.reduce((acc, row) => {
+                    acc[row.state] = row.count;
+                    return acc;
+                }, {}));
+            }
+        } catch (e) {
+            console.error("Error getting status:", e.message);
+        } finally {
+            if (db) await db.close();
+        }
+    });
 
 printBanner();
 program.parse(process.argv);
