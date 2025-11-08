@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "description": "A CLI-based background job queue system",
   "main": "queuectl.js",
-
+  "bin": {
+    "queuectl": "./queuectl.js"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
