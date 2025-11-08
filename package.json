@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "A CLI-based background job queue system",
   "main": "queuectl.js",
+
   "bin": {
     "queuectl": "./queuectl.js"
   },
@@ -32,6 +33,7 @@
     "express": "^5.1.0",
     "path": "^0.12.7",
     "sqlite": "^5.1.1",
-    "sqlite3": "^5.1.7"
+    "sqlite3": "^5.1.7",
+    "chalk": "^4.1.2"
   }
 }
