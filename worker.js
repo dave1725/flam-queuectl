@@ -45,7 +45,7 @@ async function getConfigValue(db, key, defaultValue) {
 
 async function handleJobFailure(db, job, errorMessage) {
     const newAttempts = job.attempts + 1;
-    if (newAttempts >= job.max_retries) {
+    if (newAttempts >= job.max_attempts) {
         console.log(`Job '${job.id}' failed max retries. Moving to DLQ.`);
         await db.run(`UPDATE jobs SET state = 'dead', last_error = ?, updated_at = datetime('now') WHERE id = ?`, errorMessage, job.id);
     } else {
@@ -53,7 +53,7 @@ async function handleJobFailure(db, job, errorMessage) {
         const delaySeconds = Math.pow(backoffBase, newAttempts);
         console.log(`Job '${job.id}' failed. Retrying in ${delaySeconds}s (Attempt ${newAttempts}).`);
         await db.run(
-            `UPDATE jobs SET state = 'pending', attempts = ?, last_error = ?, next_run_time = datetime('now', '+' || ? || ' seconds'), updated_at = datetime('now') WHERE id = ?`,
+            `UPDATE jobs SET state = 'pending', attempts = ?, last_error = ?, next_run_at = datetime('now', '+' || ? || ' seconds'), updated_at = datetime('now') WHERE id = ?`,
             newAttempts, errorMessage, delaySeconds, job.id
         );
     }
@@ -83,7 +83,7 @@ async function startWorker() {
             }
 
             await db.exec("BEGIN IMMEDIATE");
-            const jobRow = await db.get(`SELECT id FROM jobs WHERE state = 'pending' AND next_run_time <= datetime('now') ORDER BY created_at ASC LIMIT 1`);
+            const jobRow = await db.get(`SELECT id FROM jobs WHERE state = 'pending' AND next_run_at <= datetime('now') ORDER BY created_at ASC LIMIT 1`);
             if (jobRow) {
                 await db.run("UPDATE jobs SET state = 'processing', updated_at = datetime('now') WHERE id = ?", jobRow.id);
                 await db.exec("COMMIT");
@@ -99,7 +99,8 @@ async function startWorker() {
         if (job) {
             try {
                 // NEW: Get configured timeout
-                const timeoutMs = await getConfigValue(db, 'job_timeout_ms', 30000);
+                // config key in dbHandler is 'job_timeout' (milliseconds stored as string)
+                const timeoutMs = await getConfigValue(db, 'job_timeout', 30000);
                 console.log(`Worker [${process.pid}] executing job '${job.id}' (timeout: ${timeoutMs}ms): ${job.command}`);
                 
                 // NEW: Use configured timeout
@@ -110,8 +111,8 @@ async function startWorker() {
             } catch (error) {
                 // Handle timeout specifically for better error messages
                 let errorMessage = error.stderr || error.message || "Unknown error";
-                if (error.killed && error.signal === 'SIGTERM') {
-                     errorMessage = `Job timed out after ${await getConfigValue(db, 'job_timeout_ms', 30000)}ms`;
+             if (error.killed && error.signal === 'SIGTERM') {
+                 errorMessage = `Job timed out after ${await getConfigValue(db, 'job_timeout', 30000)}ms`;
                 }
                 console.log(`Job '${job.id}' failed: ${errorMessage}`);
                 await handleJobFailure(db, job, errorMessage);
