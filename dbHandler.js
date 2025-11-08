@@ -71,7 +71,7 @@ async function initializeDB(silent = false) {
             console.log("[*] Creating indexes on 'jobs' table...");
         }
         await db.exec(`
-            CREATE INDEX IF NOT EXISTS idx_jobs_pending ON jobs(status, next_run_at);
+            CREATE INDEX IF NOT EXISTS idx_jobs_pending ON jobs(state, next_run_at);
         `);
 
         if (!silent) {
