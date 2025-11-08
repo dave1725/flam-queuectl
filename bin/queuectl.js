@@ -180,10 +180,12 @@ worker
         const count = parseInt(options.count, 10);
         console.log(`Starting ${count} worker(s) in the background...`);
 
-        const workerScript = path.join(__dirname, 'worker.js');
+        // worker.js lives in the project root (one level up from bin/)
+        const workerScript = path.join(__dirname, '..', 'worker.js');
 
         for (let i = 0; i < count; i++) {
-            const child = spawn(process.argv[0], [workerScript], {
+            // Use process.execPath to reliably invoke Node
+            const child = spawn(process.execPath, [workerScript], {
                 detached: true,
                 stdio: 'ignore',
                 cwd: process.cwd()
@@ -250,6 +252,57 @@ program
             }
         } catch (e) {
             console.error("Error getting status:", e.message);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+// DLQ Commands
+const dlq = program.command('dlq').description('Manage Dead Letter Queue');
+
+dlq
+    .command('list')
+    .description('List all jobs in DLQ (state=dead)')
+    .action(async () => {
+        let db;
+        try {
+            await ensureDBInitialized();
+            db = await getDBConnection();
+            const rows = await db.all("SELECT * FROM jobs WHERE state = 'dead'");
+            if (rows.length === 0) {
+                console.log("DLQ is empty.");
+            } else {
+                console.table(rows);
+            }
+        } catch (e) {
+            console.error("Error listing DLQ:", e.message);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+dlq
+    .command('retry')
+    .description('Move a job from DLQ back to pending')
+    .argument('<id>', 'Job ID to retry')
+    .action(async (id) => {
+        let db;
+        try {
+            await ensureDBInitialized();
+            db = await getDBConnection();
+            const result = await db.run(
+                `UPDATE jobs
+                 SET state = 'pending', attempts = 0, next_run_time = datetime('now'), updated_at = datetime('now'), last_error = NULL
+                 WHERE id = ? AND state = 'dead'`,
+                id
+            );
+            if (result.changes > 0) {
+                console.log(`Job '${id}' moved from DLQ to pending.`);
+            } else {
+                console.log(`Job '${id}' not found in DLQ.`);
+            }
+        } catch (e) {
+            console.error("Error retrying DLQ job:", e.message);
         } finally {
             if (db) await db.close();
         }
