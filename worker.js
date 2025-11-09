@@ -1,3 +1,4 @@
+// CHANGED: Use new dbHandler
 const { getDBConnection } = require('./dbHandler.js');
 const { exec } = require('child_process');
 const util = require('util');
@@ -44,17 +45,27 @@ async function getConfigValue(db, key, defaultValue) {
 }
 
 async function handleJobFailure(db, job, errorMessage) {
-    const newAttempts = job.attempts + 1;
-    if (newAttempts >= job.max_attempts) {
+    // CHANGED: Use 'max_attempts' from schema
+    let maxAttempts = parseInt(job.max_attempts, 10); 
+    if (isNaN(maxAttempts) || maxAttempts <= 0) {
+         // CHANGED: Use new config key 'default_max_tries'
+         maxAttempts = parseInt(await getConfigValue(db, 'default_max_tries', 3), 10);
+    }
+
+    console.log(`Job '${job.id}' failed attempt ${job.attempts}/${maxAttempts}`);
+
+    if (job.attempts >= maxAttempts) {
         console.log(`Job '${job.id}' failed max retries. Moving to DLQ.`);
         await db.run(`UPDATE jobs SET state = 'dead', last_error = ?, updated_at = datetime('now') WHERE id = ?`, errorMessage, job.id);
     } else {
         const backoffBase = await getConfigValue(db, 'backoff_base', 2);
-        const delaySeconds = Math.pow(backoffBase, newAttempts);
-        console.log(`Job '${job.id}' failed. Retrying in ${delaySeconds}s (Attempt ${newAttempts}).`);
+        const delaySeconds = Math.pow(backoffBase, job.attempts);
+        console.log(`Job '${job.id}' will retry in ${delaySeconds}s.`);
+        
+        // CHANGED: Use 'next_run_at'
         await db.run(
-            `UPDATE jobs SET state = 'pending', attempts = ?, last_error = ?, next_run_at = datetime('now', '+' || ? || ' seconds'), updated_at = datetime('now') WHERE id = ?`,
-            newAttempts, errorMessage, delaySeconds, job.id
+            `UPDATE jobs SET state = 'pending', last_error = ?, next_run_at = datetime('now', '+' || ? || ' seconds'), updated_at = datetime('now') WHERE id = ?`,
+            errorMessage, delaySeconds, job.id
         );
     }
 }
@@ -83,38 +94,38 @@ async function startWorker() {
             }
 
             await db.exec("BEGIN IMMEDIATE");
+            // CHANGED: Use 'next_run_at'
             const jobRow = await db.get(`SELECT id FROM jobs WHERE state = 'pending' AND next_run_at <= datetime('now') ORDER BY created_at ASC LIMIT 1`);
             if (jobRow) {
-                await db.run("UPDATE jobs SET state = 'processing', updated_at = datetime('now') WHERE id = ?", jobRow.id);
+                await db.run("UPDATE jobs SET state = 'processing', attempts = attempts + 1, updated_at = datetime('now') WHERE id = ?", jobRow.id);
                 await db.exec("COMMIT");
                 job = await db.get("SELECT * FROM jobs WHERE id = ?", jobRow.id);
             } else {
                 await db.exec("COMMIT");
             }
         } catch (e) {
-            if (e.code !== 'SQLITE_BUSY') console.error(`Error polling: ${e.message}`);
+            if (e.code !== 'SQLITE_BUSY' && !e.message.includes('database is locked')) {
+                 console.error(`Error polling: ${e.message}`);
+            }
             if (db) try { await db.exec("ROLLBACK"); } catch (e) {}
         }
         
         if (job) {
             try {
-                // NEW: Get configured timeout
-                // config key in dbHandler is 'job_timeout' (milliseconds stored as string)
+                // CHANGED: Use new config key 'job_timeout'
                 const timeoutMs = await getConfigValue(db, 'job_timeout', 30000);
-                console.log(`Worker [${process.pid}] executing job '${job.id}' (timeout: ${timeoutMs}ms): ${job.command}`);
+                console.log(`Worker [${process.pid}] executing job '${job.id}' (Attempt ${job.attempts}/${job.max_attempts})`);
                 
-                // NEW: Use configured timeout
                 const { stdout } = await execPromise(job.command, { timeout: timeoutMs });
                 
                 console.log(`Job '${job.id}' completed.`);
                 await db.run("UPDATE jobs SET state = 'completed', updated_at = datetime('now'), last_error = NULL WHERE id = ?", job.id);
             } catch (error) {
-                // Handle timeout specifically for better error messages
                 let errorMessage = error.stderr || error.message || "Unknown error";
-             if (error.killed && error.signal === 'SIGTERM') {
-                 errorMessage = `Job timed out after ${await getConfigValue(db, 'job_timeout', 30000)}ms`;
+                if (error.killed && error.signal === 'SIGTERM') {
+                     // CHANGED: Use new config key 'job_timeout'
+                    errorMessage = `Job timed out after ${await getConfigValue(db, 'job_timeout', 30000)}ms`;
                 }
-                console.log(`Job '${job.id}' failed: ${errorMessage}`);
                 await handleJobFailure(db, job, errorMessage);
             }
         } else {
