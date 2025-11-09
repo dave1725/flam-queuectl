@@ -292,7 +292,7 @@ dlq
             db = await getDBConnection();
             const result = await db.run(
                 `UPDATE jobs
-                 SET state = 'pending', attempts = 0, next_run_time = datetime('now'), updated_at = datetime('now'), last_error = NULL
+                 SET state = 'pending', attempts = 0, next_run_at = datetime('now'), updated_at = datetime('now'), last_error = NULL
                  WHERE id = ? AND state = 'dead'`,
                 id
             );
