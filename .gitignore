@@ -18,3 +18,4 @@ coverage
 *.gz
 *.zip
 *.db
+.stop_workers
