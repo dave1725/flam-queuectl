@@ -14,6 +14,7 @@
 - [Quick demo (end-to-end)](#quick-demo-end-to-end)
 - [Usage examples (CLI)](#usage-examples-cli)
 - [Architecture overview](#architecture-overview)
+- [Design document](#design-document)
 - [Assumptions & trade-offs](#assumptions--trade-offs)
 - [Testing instructions](#testing-instructions)
 
@@ -52,33 +53,18 @@ Notes for Windows
 
 ---
 
-## Quick demo (end-to-end)
-Copy/paste these commands from the project root to see a minimal end-to-end run (DB init → start worker → enqueue job → check status):
+## Web dashboard for monitoring
+
+QueueCTL also features a powerful dashboard for monitoring the job-queue more visually.
 
 ```bash
-# 1) initialize DB
-queuectl init
-
-# 2) start 1 worker in background
-queuectl worker start --count 1
-
-# 3) enqueue a tiny job
-queuectl enqueue '{"id":"demo-1","command":"node -e \"console.log(\\'hello demo\\')\""}'
-
-# 4) check status
-queuectl status
-
-# 5) optional: open dashboard (foreground)
-node ./web/server
-#or via CLI: 
+# use node
+node ./web/server.js
+# or via CLI(npm link must have been performed):
 queuectl web start
 ```
 
-Expected results
-- `init` prints success
-- `worker start` prints the background PID message
-- `enqueue` confirms job insertion
-- `status` reports active workers and job counts (pending/completed)
+![](./assets/web.png)
 
 ---
 
@@ -101,13 +87,40 @@ Examples
 
 ```bash
 queuectl init
-# => [+] Database initialization complete.
+# op: 
+[+] Database initialization complete.
 
+# push a job for execution
 queuectl enqueue '{"id":"job-1","command":"node -e \"console.log(\\'work\\')\""}'
-# => [+] Successfully enqueued job 'job-1'.
+# op: 
+[+] Successfully enqueued job 'job-1'.
 
+# starts two workers concurrently
 queuectl worker start --count 2
+
+# checking active workers and job state
 queuectl status
+# op:
+[*] Active Workers: 4
+
+┌───────────┬────────┐
+│ (index)   │ Values │
+├───────────┼────────┤
+│ completed │ 2      │
+│ dead      │ 2      │
+└───────────┴────────┘
+
+# check active worker list
+queuectl worker list
+# op:
+┌─────────┬───────┬───────────────────┬───────────────────────┬───────────────────────┐
+│ (index) │ pid   │ hostname          │ started_at            │ last_heartbeat        │
+├─────────┼───────┼───────────────────┼───────────────────────┼───────────────────────┤
+│ 0       │ 2232  │ 'DESKTOP-UC4RRD9' │ '2025-11-09 09:58:34' │ '2025-11-09 10:02:27' │
+│ 1       │ 16600 │ 'DESKTOP-UC4RRD9' │ '2025-11-09 09:58:34' │ '2025-11-09 10:02:27' │
+│ 2       │ 20116 │ 'DESKTOP-UC4RRD9' │ '2025-11-09 09:58:34' │ '2025-11-09 10:02:27' │
+│ 3       │ 20260 │ 'DESKTOP-UC4RRD9' │ '2025-11-09 09:58:34' │ '2025-11-09 10:02:27' │
+└─────────┴───────┴───────────────────┴───────────────────────┴───────────────────────┘
 ```
 
 ---
@@ -138,6 +151,12 @@ High level components
 | jobs    | id, command, state, attempts, max_attempts, next_run_at, created_at, updated_at, last_error |
 | workers | pid, hostname, last_heartbeat, registered_at                                                 |
 | config  | key, value (defaults include `default_max_tries`, `backoff_base`, etc.)                      |
+
+---
+
+## QueueCTL Architecture
+
+See the full design write-up in [`DESIGN.md`](./DESIGN.md).
 
 ---
 
@@ -181,7 +200,8 @@ queuectl status
 ```
 
 More docs
-- Full testing instructions and troubleshooting are in `TESTING.md` 
+- Full testing instructions and troubleshooting are in `TESTING.md`.
+- Detailed design notes and diagrams are in `DESIGN.md`.
 ---
 
 ## Author
