@@ -8,17 +8,19 @@
 ![Node](https://img.shields.io/badge/node-18%20%7C%2020%20%7C%2022-339933)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
+## VIDEO DEMONSTRATION
+Link - https://drive.google.com/file/d/1Jp-_7wzGqhD746P3iBBPj2jBYs65fNS5/view?usp=sharing
 
 ## Table of Contents
-- [Setup — Run locally (shim-only)](#setup--run-locally-shim-only)
-- [Quick demo (end-to-end)](#quick-demo-end-to-end)
+- [Setup Instructions](#setup-instructions---run-locally)
+- [Web Dashboard](#web-dashboard-for-monitoring)
 - [Usage examples (CLI)](#usage-examples-cli)
 - [Architecture overview](#architecture-overview)
-- [Design document](#design-document)
+- [System Design of QueueCTL](#queuectl-architecture)
 - [Assumptions & trade-offs](#assumptions--trade-offs)
 - [Testing instructions](#testing-instructions)
 
-## Setup instructions — Run locally
+## Setup instructions - Run locally
 
 Prerequisites
 
