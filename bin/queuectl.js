@@ -392,5 +392,76 @@ config
         }
     });
 
+// Web dashboard commands
+const web = program.command('web').alias('app').description('Web dashboard for monitoring the job queue');
+web
+  .command('start')
+  .description('Start the web dashboard (foreground by default). Use --daemon to run in background')
+  .option('-d, --daemon', 'Run dashboard in background')
+  .action((opts) => {
+      const serverScript = path.join(__dirname, '..', 'web', 'server.js');
+      if (opts.daemon) {
+          try {
+              const child = spawn(process.execPath, [serverScript], {
+                  detached: true,
+                  stdio: 'ignore',
+                  cwd: process.cwd()
+              });
+              child.unref();
+
+              try {
+                  const pidFile = path.join(process.cwd(), '.dashboard.pid');
+                  //writing pid to stop app afterwards
+                  fs.writeFileSync(pidFile, String(child.pid), { encoding: 'utf8' });
+                  console.log(`[+] Dashboard started in background (pid: ${child.pid}). PID written to ${pidFile}`);
+              } catch (e) {
+                  console.log('[+] Dashboard started in background, but failed to write PID file:', e.message);
+              }
+          } catch (e) {
+              console.error('[!!] Failed to start dashboard in background:', e.message);
+              process.exit(1);
+          }
+      } else {
+          try {
+              console.log('[*] Starting dashboard (foreground). Press CTRL+C to stop.');
+              const fg = spawn(process.execPath, [serverScript], { stdio: 'inherit', cwd: process.cwd() });
+              fg.on('exit', (code) => process.exit(code || 0));
+          } catch (e) {
+              console.error('[!!] Failed to start dashboard:', e.message);
+              process.exit(1);
+          }
+      }
+  });
+
+web
+  .command('stop')
+  .description('Stop a dashboard started with `web start --daemon`')
+  .action(() => {
+      const pidFile = path.join(process.cwd(), '.dashboard.pid');
+      if (!fs.existsSync(pidFile)) {
+          console.error('[!] No .dashboard.pid file found in current directory — is the dashboard running?');
+          process.exit(1);
+      }
+      try {
+          const text = fs.readFileSync(pidFile, 'utf8').trim();
+          const pid = parseInt(text, 10);
+          if (isNaN(pid)) throw new Error('Invalid PID in pidfile');
+          try {
+              process.kill(pid);
+              console.log(`[+] Sent termination signal to dashboard pid ${pid}.`);
+          } catch (e) {
+              // if process doesn't exist, report it but remove pidfile
+              if (e.code === 'ESRCH') console.warn('[!] No process found with that PID — removing stale pidfile.');
+              else throw e;
+          }
+          try { fs.unlinkSync(pidFile); } catch (e) {}
+          process.exit(0);
+      } catch (e) {
+          console.error('[!!] Failed to stop dashboard:', e.message);
+          process.exit(1);
+      }
+  });
+
 printBanner();
 program.parse(process.argv);
+
