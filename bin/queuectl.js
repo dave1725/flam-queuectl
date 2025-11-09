@@ -110,7 +110,7 @@ program
                 throw new Error("Job must have 'id' and 'command' fields.");
             }
 
-            console.log(`Attempting to enqueue job: ${jsonStr}`);
+            console.log(`[+] Attempting to enqueue job: ${jsonStr}`);
 
             // Accept either `max_attempts` or `max_retries` from input (backwards-compatible)
             const max_attempts = jobData.max_attempts !== undefined
@@ -124,9 +124,9 @@ program
 
             await db.run(insertSql, jobData.id, jobData.command, max_attempts);
 
-            console.log(`Successfully enqueued job '${jobData.id}'.`);
+            console.log(`[+] Successfully enqueued job '${jobData.id}'.`);
         } catch (e) {
-            console.error("Error enqueuing job:", e.message);
+            console.error("[!!] Error enqueuing job:", e.message);
         } finally {
             if (db) await db.close();
         }
@@ -145,12 +145,12 @@ program
             db = await getDBConnection();
             const rows = await db.all("SELECT * FROM jobs WHERE state = ?", options.state);
             if (rows.length === 0) {
-                console.log(`No jobs found in state '${options.state}'.`);
+                console.log(`[!] No jobs found in state '${options.state}'.`);
             } else {
                 console.table(rows);
             }
         } catch (e) {
-            console.error("Error listing jobs:", e.message);
+            console.error("[!!] Error listing jobs:", e.message);
         } finally {
             if (db) await db.close();
         }
@@ -171,14 +171,14 @@ worker
         if (fs.existsSync(STOP_FILE)) {
             try {
                 fs.unlinkSync(STOP_FILE);
-                console.log("Cleared previous stop signal (.stop_workers file deleted).");
+                console.log("[+] Cleared previous stop signal (.stop_workers file deleted).");
             } catch (e) {
-                console.warn("Warning: Could not delete .stop_workers file:", e.message);
+                console.warn("[!] Warning: Could not delete .stop_workers file:", e.message);
             }
         }
 
         const count = parseInt(options.count, 10);
-        console.log(`Starting ${count} worker(s) in the background...`);
+        console.log(`[+] Starting ${count} worker(s) in the background...`);
 
         // worker.js lives in the project root (one level up from bin/)
         const workerScript = path.join(__dirname, '..', 'worker.js');
@@ -192,7 +192,7 @@ worker
             });
             child.unref();
         }
-        console.log(`${count} worker(s) started.`);
+        console.log(`[+] ${count} worker(s) started.`);
     });
 
 worker
@@ -201,10 +201,10 @@ worker
     .action(() => {
         try {
             fs.writeFileSync(STOP_FILE, 'STOP');
-            console.log("Stop signal sent to all workers (created .stop_workers file).");
-            console.log("Workers will finish their current jobs and exit.");
+            console.log("[+] Stop signal sent to all workers (created .stop_workers file).");
+            console.log("[+] Workers will finish their current jobs and exit.");
         } catch (e) {
-            console.error("Failed to send stop signal:", e.message);
+            console.error("[!!] Failed to send stop signal:", e.message);
         }
     });
 
@@ -218,12 +218,12 @@ worker
             db = await getDBConnection();
             const workers = await db.all("SELECT * FROM workers WHERE last_heartbeat > datetime('now', '-15 seconds')");
             if (workers.length === 0) {
-                console.log("No active workers found.");
+                console.log("[!] No active workers found.");
             } else {
                 console.table(workers);
             }
         } catch (e) {
-            console.error("Error listing workers:", e.message);
+            console.error("[!!] Error listing workers:", e.message);
         } finally {
             if (db) await db.close();
         }
@@ -240,10 +240,10 @@ program
             db = await getDBConnection();
             const rows = await db.all("SELECT state, COUNT(*) as count FROM jobs GROUP BY state");
             const workerStats = await db.get("SELECT COUNT(*) as count FROM workers WHERE last_heartbeat > datetime('now', '-15 seconds')");
-            console.log(`Active Workers: ${workerStats.count}\n`);
+            console.log(`[*] Active Workers: ${workerStats.count}\n`);
             
             if (rows.length === 0) {
-                console.log("No jobs in queue.");
+                console.log("[!] No jobs in queue.");
             } else {
                 console.table(rows.reduce((acc, row) => {
                     acc[row.state] = row.count;
@@ -251,7 +251,7 @@ program
                 }, {}));
             }
         } catch (e) {
-            console.error("Error getting status:", e.message);
+            console.error("[!!] Error getting status:", e.message);
         } finally {
             if (db) await db.close();
         }
@@ -270,12 +270,12 @@ dlq
             db = await getDBConnection();
             const rows = await db.all("SELECT * FROM jobs WHERE state = 'dead'");
             if (rows.length === 0) {
-                console.log("DLQ is empty.");
+                console.log("[!] DLQ is empty.");
             } else {
                 console.table(rows);
             }
         } catch (e) {
-            console.error("Error listing DLQ:", e.message);
+            console.error("[!!] Error listing DLQ:", e.message);
         } finally {
             if (db) await db.close();
         }
@@ -297,12 +297,12 @@ dlq
                 id
             );
             if (result.changes > 0) {
-                console.log(`Job '${id}' moved from DLQ to pending.`);
+                console.log(`[+] Job '${id}' moved from DLQ to pending.`);
             } else {
-                console.log(`Job '${id}' not found in DLQ.`);
+                console.log(`[!] Job '${id}' not found in DLQ.`);
             }
         } catch (e) {
-            console.error("Error retrying DLQ job:", e.message);
+            console.error("[!!] Error retrying DLQ job:", e.message);
         } finally {
             if (db) await db.close();
         }
@@ -314,17 +314,17 @@ const config = program.command('config').description('Manage system configuratio
 config
     .command('set')
     .description('Set a configuration value')
-    .argument('<key>', 'Config key (e.g., default_max_retries, backoff_base)')
+    .argument('<key>', 'Config key (e.g., default_max_tries, backoff_base)')
     .argument('<value>', 'Config value')
     .action(async (key, value) => {
         let db;
         try {
-            await ensureDb();
-            db = await getDbConnection();
+            await ensureDBInitialized();
+            db = await getDBConnection();
             await db.run("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", key, value);
-            console.log(`Configuration updated: ${key} = ${value}`);
+            console.log(`[+] Configuration updated: ${key} = ${value}`);
         } catch (e) {
-            console.error("Error setting config:", e.message);
+            console.error("[!!] Error setting config:", e.message);
         } finally {
             if (db) await db.close();
         }
@@ -337,16 +337,56 @@ config
     .action(async (key) => {
         let db;
         try {
-            await ensureDb();
-            db = await getDbConnection();
+            await ensureDBInitialized();
+            db = await getDBConnection();
             const row = await db.get("SELECT value FROM config WHERE key = ?", key);
             if (row) {
-                console.log(`${key} = ${row.value}`);
+                console.log(`[+] ${key} = ${row.value}`);
             } else {
-                console.log(`Configuration key '${key}' not set.`);
+                console.log(`[!] Configuration key '${key}' not set.`);
             }
         } catch (e) {
-             console.error("Error getting config:", e.message);
+             console.error("[!!] Error getting config:", e.message);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+config
+    .command('list')
+    .description('List configuration keys and values (defaults marked)')
+    .action(async () => {
+        let db;
+        try {
+            await ensureDBInitialized();
+            db = await getDBConnection();
+            const rows = await db.all('SELECT key, value FROM config ORDER BY key');
+
+            // keys that dbHandler inserts as defaults
+            const defaultKeys = new Set([
+                'max_concurrent_jobs',
+                'job_retry_delay',
+                'worker_heartbeat_interval',
+                'job_timeout',
+                'backoff_strategy',
+                'backoff_base',
+                'default_max_tries'
+            ]);
+
+            if (rows.length === 0) {
+                console.log('[!] No configuration keys found.');
+                return;
+            }
+
+            const table = rows.map(r => ({
+                key: r.key,
+                value: r.value,
+                default: defaultKeys.has(r.key)
+            }));
+            console.table(table);
+
+        } catch (e) {
+            console.error('[!!] Error listing config:', e.message);
         } finally {
             if (db) await db.close();
         }
@@ -354,4 +394,3 @@ config
 
 printBanner();
 program.parse(process.argv);
-
