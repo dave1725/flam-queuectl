@@ -308,6 +308,50 @@ dlq
         }
     });
 
+// Config Command
+const config = program.command('config').description('Manage system configuration');
+
+config
+    .command('set')
+    .description('Set a configuration value')
+    .argument('<key>', 'Config key (e.g., default_max_retries, backoff_base)')
+    .argument('<value>', 'Config value')
+    .action(async (key, value) => {
+        let db;
+        try {
+            await ensureDb();
+            db = await getDbConnection();
+            await db.run("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", key, value);
+            console.log(`Configuration updated: ${key} = ${value}`);
+        } catch (e) {
+            console.error("Error setting config:", e.message);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+config
+    .command('get')
+    .description('Get a configuration value')
+    .argument('<key>', 'Config key')
+    .action(async (key) => {
+        let db;
+        try {
+            await ensureDb();
+            db = await getDbConnection();
+            const row = await db.get("SELECT value FROM config WHERE key = ?", key);
+            if (row) {
+                console.log(`${key} = ${row.value}`);
+            } else {
+                console.log(`Configuration key '${key}' not set.`);
+            }
+        } catch (e) {
+             console.error("Error getting config:", e.message);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
 printBanner();
 program.parse(process.argv);
 
