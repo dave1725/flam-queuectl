@@ -6,6 +6,8 @@ const open = require('open');
 const app = express();
 const PORT = 3000;
 
+app.use(express.static(path.join(__dirname, 'assets')));
+
 // API Endpoint to get job and worker summary
 app.get('/api/summary', async (req, res) => {
     let db;
